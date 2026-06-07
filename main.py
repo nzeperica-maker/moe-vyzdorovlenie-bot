@@ -78,6 +78,3 @@ app.add_handler(
 
 if __name__ == "__main__":
     main()
-
-
-from telegram.ext import MessageHandler, filters
