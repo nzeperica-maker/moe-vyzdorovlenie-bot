@@ -1,8 +1,10 @@
-from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    ContextTypes
+    ContextTypes,
+    MessageHandler,
+    filters
+
 )
 import os
 
