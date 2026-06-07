@@ -4,6 +4,8 @@ import os
 
 TOKEN = os.getenv("Bot_token")
 
+print("TOKEN:", TOKEN)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Бот работает!")
 
