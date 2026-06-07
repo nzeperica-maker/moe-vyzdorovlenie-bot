@@ -1,97 +1,138 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from datetime import datetime
-import json
-import os
+from services.storage import append_record
 
-user_states = {}
-
-DATA_FILE = "data/daily_reviews.json"
-
-
-def save_morning_review(user_id, answers):
-    os.makedirs("data", exist_ok=True)
-
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as file:
-            try:
-                data = json.load(file)
-            except json.JSONDecodeError:
-                data = []
-    else:
-        data = []
-
-    data.append({
-        "telegram_id": user_id,
-        "date": datetime.now().strftime("%Y-%m-%d"),
-        "type": "morning",
-        "score": answers.get("score"),
-        "mood": answers.get("mood"),
-        "craving": answers.get("craving"),
-        "plan": answers.get("plan"),
-        "created_at": datetime.now().isoformat()
-    })
-
-    with open(DATA_FILE, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
+morning_states = {}
 
 
 async def morning_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    user_states[user_id] = {
+    morning_states[user_id] = {
         "step": 1,
         "answers": {}
     }
 
     await update.message.reply_text(
         "🌅 Утренний настрой\n\n"
-        "1. Оцени своё состояние от 1 до 10"
+        "1. Оцени своё состояние от 1 до 10."
+    )
+
+
+def morning_score_description(score_text: str) -> str:
+    try:
+        score = int(score_text)
+    except ValueError:
+        return "Спасибо. Теперь опиши состояние подробнее."
+
+    if score <= 3:
+        return (
+            "Похоже, утро даётся непросто. Сегодня особенно важно быть бережным(ой) "
+            "к себе, не оставаться одному/одной и обращаться за помощью."
+        )
+    if score <= 6:
+        return (
+            "Состояние среднее. Это хороший момент, чтобы честно заметить тревоги, "
+            "страхи и заранее выбрать духовный принцип на день."
+        )
+    if score <= 8:
+        return (
+            "Есть ресурс. Можно использовать этот день для спокойных действий, "
+            "служения и укрепления трезвости."
+        )
+    return (
+        "Высокий ресурс. Важно сохранить благодарность, смирение и помнить: "
+        "трезвость поддерживается ежедневными действиями."
     )
 
 
 async def handle_morning_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    if user_id not in user_states:
+    if user_id not in morning_states:
         return False
 
-    state = user_states[user_id]
-    text = update.message.text
+    state = morning_states[user_id]
+    text = update.message.text.strip()
 
     if state["step"] == 1:
         state["answers"]["score"] = text
         state["step"] = 2
+
         await update.message.reply_text(
+            morning_score_description(text) + "\n\n"
             "2. Опиши своё состояние подробнее.\n\n"
             "Что происходит внутри тебя сегодня утром?"
         )
 
     elif state["step"] == 2:
-        state["answers"]["mood"] = text
+        state["answers"]["state_description"] = text
         state["step"] = 3
+
         await update.message.reply_text(
-            "3. Есть ли сегодня тяга?\n\n"
-            "Напиши: нет / слабая / сильная"
+            "3. Что сегодня вызывает наибольшее беспокойство?"
         )
 
     elif state["step"] == 3:
-        state["answers"]["craving"] = text
+        state["answers"]["worry"] = text
         state["step"] = 4
+
         await update.message.reply_text(
-            "4. Что поможет тебе сохранить трезвость сегодня?"
+            "4. Есть ли сегодня тяга?\n\n"
+            "Напиши: нет / слабая / сильная."
         )
 
     elif state["step"] == 4:
-        state["answers"]["plan"] = text
+        state["answers"]["craving"] = text
+        state["step"] = 5
 
-        save_morning_review(user_id, state["answers"])
+        await update.message.reply_text(
+            "5. Какие 3 важных действия ты хочешь сделать сегодня?"
+        )
+
+    elif state["step"] == 5:
+        state["answers"]["daily_actions"] = text
+        state["step"] = 6
+
+        await update.message.reply_text(
+            "6. Какой духовный принцип ты хочешь практиковать сегодня?"
+        )
+
+    elif state["step"] == 6:
+        state["answers"]["principle"] = text
+        state["step"] = 7
+
+        await update.message.reply_text(
+            "7. Как ты можешь применить этот принцип сегодня на практике?"
+        )
+
+    elif state["step"] == 7:
+        state["answers"]["principle_practice"] = text
+        state["step"] = 8
+
+        await update.message.reply_text(
+            "8. О чём ты хочешь попросить Бога / Высшую Силу сегодня?"
+        )
+
+    elif state["step"] == 8:
+        state["answers"]["prayer"] = text
+
+        record = {
+            "telegram_id": user_id,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "type": "morning",
+            "created_at": datetime.now().isoformat(),
+            **state["answers"]
+        }
+
+        append_record("data/daily_reviews.json", record)
 
         await update.message.reply_text(
             "✅ Утренний настрой сохранён.\n\n"
             "Пусть сегодняшний день будет трезвым, честным и спокойным."
         )
 
-        del user_states[user_id]
+        del morning_states[user_id]
 
     return True
