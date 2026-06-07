@@ -10,6 +10,7 @@ import os
 
 from handlers.morning import morning_checkin, handle_morning_message
 from handlers.evening import evening_review
+from services.statistics import get_morning_stats
 
 
 TOKEN = os.getenv("Bot_token")
@@ -20,8 +21,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🙏 Добро пожаловать в Моё выздоровление\n\n"
         "Доступные команды:\n\n"
         "/morning — Утренний настрой\n"
-        "/evening — Вечерняя инвентаризация"
+        "/evening — Вечерняя инвентаризация\n"
+        "/stats — Моё выздоровление"
     )
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    message = get_morning_stats(user_id)
+    await update.message.reply_text(message)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -37,6 +45,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("morning", morning_checkin))
     app.add_handler(CommandHandler("evening", evening_review))
+    app.add_handler(CommandHandler("stats", stats))
 
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
