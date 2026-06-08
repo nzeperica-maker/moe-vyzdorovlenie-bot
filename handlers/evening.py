@@ -152,20 +152,26 @@ async def handle_evening_message(update: Update, context: ContextTypes.DEFAULT_T
         )
         return True
 
-    append_record(
-        "data/daily_reviews.json",
-        {
-            "telegram_id": user_id,
-            "type": "evening",
-            "created_at": datetime.now().isoformat(),
-            **state["answers"]
-        }
-    )
+    record = {
+        "telegram_id": user_id,
+        "type": "evening",
+        "created_at": datetime.now().isoformat(),
+        **state["answers"]
+    }
 
-    await update.message.reply_text(
-        "✅ Вечерняя инвентаризация сохранена.",
-        reply_markup=main_menu_keyboard()
-    )
+    saved = append_record("data/daily_reviews.json", record)
+
+    if saved:
+        await update.message.reply_text(
+            "✅ Вечерняя инвентаризация сохранена в облако.",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ Инвентаризация завершена, но не сохранилась в облако.\n\n"
+            "Нужно проверить Railway logs: строку SUPABASE SAVE ERROR.",
+            reply_markup=main_menu_keyboard()
+        )
 
     del evening_states[user_id]
     return True
