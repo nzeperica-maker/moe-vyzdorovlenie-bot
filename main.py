@@ -17,7 +17,7 @@ from handlers.fears import fear_inventory, handle_fear_message, handle_fear_call
 from handlers.resentments import resentment_inventory, handle_resentment_message, handle_resentment_callback, resentment_states
 from handlers.principles import show_principles, handle_principles_callback, seed_principles_command
 from handlers.defects import show_defects, handle_defects_callback, seed_defects_command
-from handlers.steps import show_steps, handle_steps_callback, seed_steps_command
+from handlers.steps import show_steps, handle_steps_callback, seed_steps_command, handle_step_answer_message
 from handlers.recovery import recovery_stats
 from handlers.export import export_today
 from keyboards.main_menu import main_menu_keyboard
@@ -81,6 +81,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📄 Выгрузка дня":
         await export_today(update, context)
+        return
+
+    if await handle_step_answer_message(update, context):
         return
 
     if await handle_profile_message(update, context):
