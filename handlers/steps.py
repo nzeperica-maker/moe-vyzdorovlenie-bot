@@ -7,8 +7,13 @@ from services.steps_service import (
     get_user_step_progress,
     set_user_step_status,
     load_user_progress,
+    save_step_answer,
+    load_step_answers,
 )
 from services.steps_seed import seed_steps
+
+
+step_answer_states = {}
 
 
 STEP_EXTRA = {
@@ -124,6 +129,8 @@ def step_keyboard(step_number):
         [InlineKeyboardButton("📖 Описание", callback_data=f"steps:section:{step_number}:description")],
         [InlineKeyboardButton("🛠 Практика", callback_data=f"steps:section:{step_number}:practice"),
          InlineKeyboardButton("❓ Вопросы", callback_data=f"steps:section:{step_number}:questions")],
+        [InlineKeyboardButton("✍️ Ответить на вопросы", callback_data=f"steps:answer_start:{step_number}")],
+        [InlineKeyboardButton("📄 Мои ответы", callback_data=f"steps:answers:{step_number}")],
         [InlineKeyboardButton("🧩 Дефекты", callback_data=f"steps:section:{step_number}:defects"),
          InlineKeyboardButton("🌱 Принципы", callback_data=f"steps:section:{step_number}:principles")],
         [InlineKeyboardButton("🎯 Практика сегодня", callback_data=f"steps:section:{step_number}:today")],
@@ -219,6 +226,30 @@ def build_step_section(step_number, section):
     return text, step_keyboard(step_number)
 
 
+def build_answers_section(user_id, step_number):
+    answers = load_step_answers(user_id, step_number)
+
+    if not answers:
+        return (
+            f"📄 <b>Мои ответы по шагу {step_number}</b>\n\n"
+            "Пока нет сохранённых ответов.",
+            step_keyboard(step_number)
+        )
+
+    text = f"📄 <b>Мои ответы по шагу {step_number}</b>\n\n"
+
+    for item in answers:
+        text += (
+            f"<b>Вопрос {item.get('question_index')}</b>\n"
+            f"{safe_html(item.get('question_text'))}\n\n"
+            f"<b>Ответ:</b>\n"
+            f"{safe_html(item.get('answer_text'))}\n\n"
+            "────────────────────\n"
+        )
+
+    return text, step_keyboard(step_number)
+
+
 def build_progress(user_id):
     steps = load_steps()
     progress = load_user_progress(user_id)
@@ -283,6 +314,8 @@ async def handle_steps_callback(update: Update, context: ContextTypes.DEFAULT_TY
     action = parts[1]
 
     if action == "menu":
+        step_answer_states.pop(user_id, None)
+
         await query.edit_message_text(
             "📖 <b>12 Шагов</b>\n\nВыбери шаг для изучения или практики.",
             reply_markup=steps_main_keyboard(),
@@ -291,35 +324,139 @@ async def handle_steps_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     if action == "open":
+        step_answer_states.pop(user_id, None)
+
         step_number = int(parts[2])
         text, keyboard = build_step_card(user_id, step_number)
+
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return
 
     if action == "section":
+        step_answer_states.pop(user_id, None)
+
         step_number = int(parts[2])
         section = parts[3]
         text, keyboard = build_step_section(step_number, section)
+
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return
 
+    if action == "answers":
+        step_number = int(parts[2])
+        text, keyboard = build_answers_section(user_id, step_number)
+
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+        return
+
+    if action == "answer_start":
+        step_number = int(parts[2])
+        step = get_step(step_number)
+
+        if not step:
+            await query.edit_message_text("Шаг не найден.")
+            return
+
+        questions = step.get("questions") or []
+
+        if not questions:
+            await query.edit_message_text(
+                "У этого шага пока нет вопросов.",
+                reply_markup=step_keyboard(step_number),
+                parse_mode="HTML"
+            )
+            return
+
+        step_answer_states[user_id] = {
+            "step_number": step_number,
+            "question_index": 0,
+            "questions": questions,
+        }
+
+        await query.edit_message_text(
+            f"✍️ <b>Ответы по шагу {step_number}</b>\n\n"
+            f"<b>Вопрос 1 из {len(questions)}</b>\n"
+            f"{safe_html(questions[0])}\n\n"
+            "Напиши ответ текстом.",
+            parse_mode="HTML"
+        )
+        return
+
     if action == "status":
+        step_answer_states.pop(user_id, None)
+
         step_number = int(parts[2])
         status = parts[3]
         set_user_step_status(user_id, step_number, status)
+
         text, keyboard = build_step_card(user_id, step_number)
+
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return
 
     if action == "progress":
+        step_answer_states.pop(user_id, None)
+
         text, keyboard = build_progress(user_id)
+
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return
 
     if action == "where":
+        step_answer_states.pop(user_id, None)
+
         text, keyboard = build_where_now()
+
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return
+
+
+async def handle_step_answer_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in step_answer_states:
+        return False
+
+    state = step_answer_states[user_id]
+
+    step_number = state["step_number"]
+    question_index = state["question_index"]
+    questions = state["questions"]
+
+    answer_text = update.message.text.strip()
+    question_text = questions[question_index]
+
+    save_step_answer(
+        user_id=user_id,
+        step_number=step_number,
+        question_index=question_index + 1,
+        question_text=question_text,
+        answer_text=answer_text,
+    )
+
+    if question_index + 1 < len(questions):
+        state["question_index"] = question_index + 1
+        next_question = questions[state["question_index"]]
+
+        await update.message.reply_text(
+            f"✅ Ответ сохранён.\n\n"
+            f"<b>Вопрос {state['question_index'] + 1} из {len(questions)}</b>\n"
+            f"{safe_html(next_question)}\n\n"
+            "Напиши ответ текстом.",
+            parse_mode="HTML"
+        )
+
+        return True
+
+    del step_answer_states[user_id]
+
+    await update.message.reply_text(
+        f"✅ Ответы по шагу {step_number} сохранены.\n\n"
+        "Ты можешь открыть их через кнопку «📄 Мои ответы» или увидеть в выгрузке дня.",
+        parse_mode="HTML"
+    )
+
+    return True
 
 
 async def seed_steps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
