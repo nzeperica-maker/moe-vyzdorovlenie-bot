@@ -1,6 +1,3 @@
-Замени **`handlers/recovery.py` целиком** на этот код:
-
-```python
 from telegram import Update
 from telegram.ext import ContextTypes
 from collections import Counter
