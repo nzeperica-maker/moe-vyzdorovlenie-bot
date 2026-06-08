@@ -4,35 +4,81 @@ from datetime import datetime
 from services.storage import load_json
 
 
-FIELD_NAMES = {
-    "situation": "Ситуация",
-    "thoughts": "Мысли",
-    "feelings": "Чувства",
-    "egoism": "Эгоизм",
-    "selfishness": "Корысть",
-    "dishonesty": "Нечестность",
-    "fear": "Страх",
-    "real_motive": "Истинный мотив",
-    "responsibility": "Моя ответственность",
-    "broken_principles": "Нарушенные принципы",
-    "applied_principles": "Принципы для применения",
-    "new_decision": "Новое решение",
-    "action_plan": "Конкретное действие",
-    "prayer": "Молитва",
-    "gratitude": "Благодарность",
-}
+MORNING_FIELDS = [
+    ("score", "Оценка состояния"),
+    ("state_description", "Описание состояния"),
+    ("worry", "Что тревожит"),
+    ("craving", "Тяга"),
+    ("prayer", "Молитва / просьба к Богу"),
+    ("principle", "Духовный принцип дня"),
+    ("principle_practice", "Как я буду применять принцип"),
+    ("daily_actions", "Действия на сегодня"),
+]
+
+EVENING_FIELDS = [
+    ("situation", "Ситуация"),
+    ("thoughts", "Мысли"),
+    ("feelings", "Чувства"),
+    ("egoism", "Эгоизм"),
+    ("selfishness", "Корысть"),
+    ("dishonesty", "Нечестность"),
+    ("fear", "Страхи"),
+    ("real_motive", "Истинный мотив"),
+    ("responsibility", "Моя ответственность"),
+    ("broken_principles", "Нарушенные духовные принципы"),
+    ("applied_principles", "Духовные принципы для применения"),
+    ("new_decision", "Новое решение"),
+    ("action_plan", "Конкретное действие"),
+    ("prayer", "Молитва"),
+    ("gratitude", "Благодарность"),
+]
+
+FEAR_FIELDS = [
+    ("situation", "Ситуация"),
+    ("fear", "Страх"),
+    ("loss", "Что боюсь потерять"),
+    ("control", "Что пытаюсь контролировать"),
+    ("defect", "Дефект характера"),
+    ("principle", "Духовный принцип"),
+    ("action", "Действие"),
+]
+
+RESENTMENT_FIELDS = [
+    ("target", "На кого / на что обида"),
+    ("event", "Что произошло"),
+    ("expectations", "Какие ожидания не оправдались"),
+    ("affected_part", "Что было задето"),
+    ("responsibility", "Моя ответственность"),
+    ("defect", "Дефект характера"),
+    ("new_view", "Новый взгляд"),
+    ("principle", "Духовный принцип"),
+    ("action", "Действие"),
+]
 
 
-def format_value(value):
-    if isinstance(value, list):
-        if not value:
-            return "—"
-        return "\n".join([f"• {item}" for item in value])
-
+def clean_value(value):
     if value is None or value == "":
         return "—"
 
-    return str(value)
+    if isinstance(value, list):
+        if not value:
+            return "—"
+        return "\n".join(f"• {item}" for item in value)
+
+    text = str(value)
+
+    if text.startswith("[") and text.endswith("]"):
+        text = (
+            text.replace("[", "")
+            .replace("]", "")
+            .replace("'", "")
+            .replace('"', "")
+        )
+        items = [item.strip() for item in text.split(",") if item.strip()]
+        if items:
+            return "\n".join(f"• {item}" for item in items)
+
+    return text.strip()
 
 
 def filter_today(records, user_id):
@@ -41,65 +87,130 @@ def filter_today(records, user_id):
     return [
         item for item in records
         if item.get("telegram_id") == user_id
-        and item.get("created_at", "").startswith(today)
+        and item.get("created_at", item.get("date", "")).startswith(today)
     ]
 
 
-def format_section(title, records):
-    if not records:
-        return f"\n\n{title}\nНет записей."
+def detect_record_type(record):
+    if "score" in record or "state_description" in record:
+        return "morning"
 
-    text = f"\n\n{title}"
+    if "broken_principles" in record or "applied_principles" in record:
+        return "evening"
 
-    for index, record in enumerate(records, start=1):
-        text += f"\n\nЗапись {index}"
+    return record.get("type", "unknown")
 
-        for key, label in FIELD_NAMES.items():
-            if key in record:
-                text += f"\n\n{label}:\n{format_value(record.get(key))}"
+
+def format_fields(record, fields):
+    text = ""
+
+    for key, label in fields:
+        if key in record:
+            text += f"\n<b>{label}</b>\n"
+            text += f"{clean_value(record.get(key))}\n"
 
     return text
+
+
+def format_morning(records):
+    morning_records = [
+        record for record in records
+        if detect_record_type(record) == "morning"
+    ]
+
+    if not morning_records:
+        return "\n🌅 <b>Утренний настрой</b>\nНет записей.\n"
+
+    text = "\n🌅 <b>Утренний настрой</b>\n"
+
+    for index, record in enumerate(morning_records, start=1):
+        text += f"\n<b>Запись {index}</b>\n"
+        text += format_fields(record, MORNING_FIELDS)
+
+    return text
+
+
+def format_evening(records):
+    evening_records = [
+        record for record in records
+        if detect_record_type(record) == "evening"
+    ]
+
+    if not evening_records:
+        return "\n🌙 <b>Вечерняя инвентаризация</b>\nНет записей.\n"
+
+    text = "\n🌙 <b>Вечерняя инвентаризация</b>\n"
+
+    for index, record in enumerate(evening_records, start=1):
+        text += f"\n<b>Ситуация {index}</b>\n"
+        text += format_fields(record, EVENING_FIELDS)
+
+    return text
+
+
+def format_extra_section(title, records, fields):
+    if not records:
+        return f"\n{title}\nНет записей.\n"
+
+    text = f"\n{title}\n"
+
+    for index, record in enumerate(records, start=1):
+        text += f"\n<b>Запись {index}</b>\n"
+        text += format_fields(record, fields)
+
+    return text
+
+
+def split_message(text, limit=3900):
+    parts = []
+
+    while len(text) > limit:
+        cut = text.rfind("\n\n", 0, limit)
+        if cut == -1:
+            cut = limit
+
+        parts.append(text[:cut])
+        text = text[cut:].strip()
+
+    if text:
+        parts.append(text)
+
+    return parts
 
 
 async def export_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     today_readable = datetime.now().strftime("%d.%m.%Y")
 
-    daily_reviews = filter_today(
+    daily_records = filter_today(
         load_json("data/daily_reviews.json", []),
         user_id
     )
 
-    fears = filter_today(
+    fear_records = filter_today(
         load_json("data/fears.json", []),
         user_id
     )
 
-    resentments = filter_today(
+    resentment_records = filter_today(
         load_json("data/resentments.json", []),
         user_id
     )
 
     export_text = (
-        f"📄 Полная выгрузка дня\n"
-        f"Дата: {today_readable}\n\n"
-        f"Этот отчёт можно переслать спонсору."
+        f"📄 <b>Полная выгрузка дня</b>\n"
+        f"Дата: <b>{today_readable}</b>\n\n"
+        f"Отчёт для личного анализа или отправки спонсору.\n"
+        f"────────────────────\n"
     )
 
-    export_text += format_section("🌙 Вечерняя инвентаризация", daily_reviews)
-    export_text += format_section("😨 Страхи", fears)
-    export_text += format_section("💢 Обиды", resentments)
+    export_text += format_morning(daily_records)
+    export_text += "\n────────────────────\n"
+    export_text += format_evening(daily_records)
+    export_text += "\n────────────────────\n"
+    export_text += format_extra_section("😨 <b>Инвентаризация страхов</b>", fear_records, FEAR_FIELDS)
+    export_text += "\n────────────────────\n"
+    export_text += format_extra_section("💢 <b>Инвентаризация обид</b>", resentment_records, RESENTMENT_FIELDS)
 
-    if len(export_text) <= 3900:
-        await update.message.reply_text(export_text)
-    else:
-        filename = "vygruzka_dnya.txt"
-
-        with open(filename, "w", encoding="utf-8") as file:
-            file.write(export_text)
-
-        await update.message.reply_document(
-            document=open(filename, "rb"),
-            filename=filename,
-            caption="📄 Полная выгрузка дня"
-        )
+    for part in split_message(export_text):
+        await update.message.reply_text(part, parse_mode="HTML")
