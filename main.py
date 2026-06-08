@@ -1,4 +1,3 @@
-
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -17,7 +16,8 @@ from handlers.evening import evening_review, handle_evening_message, handle_even
 from handlers.fears import fear_inventory, handle_fear_message, handle_fear_callback, fear_states
 from handlers.resentments import resentment_inventory, handle_resentment_message, handle_resentment_callback, resentment_states
 from handlers.principles import show_principles, handle_principles_callback, seed_principles_command
-from handlers.defects import show_defects, handle_defects_callback
+from handlers.defects import show_defects, handle_defects_callback, seed_defects_command
+from handlers.steps import show_steps, handle_steps_callback, seed_steps_command
 from handlers.recovery import recovery_stats
 from handlers.export import export_today
 from keyboards.main_menu import main_menu_keyboard
@@ -71,6 +71,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_defects(update, context)
         return
 
+    if text == "📖 12 Шагов":
+        await show_steps(update, context)
+        return
+
     if text == "📈 Моё выздоровление":
         await recovery_stats(update, context)
         return
@@ -114,9 +118,16 @@ def main():
     app.add_handler(CommandHandler("evening", evening_review))
     app.add_handler(CommandHandler("fear", fear_inventory))
     app.add_handler(CommandHandler("resentment", resentment_inventory))
+
     app.add_handler(CommandHandler("principles", show_principles))
     app.add_handler(CommandHandler("seed_principles", seed_principles_command))
+
     app.add_handler(CommandHandler("defects", show_defects))
+    app.add_handler(CommandHandler("seed_defects", seed_defects_command))
+
+    app.add_handler(CommandHandler("steps", show_steps))
+    app.add_handler(CommandHandler("seed_steps", seed_steps_command))
+
     app.add_handler(CommandHandler("recovery", recovery_stats))
     app.add_handler(CommandHandler("export_today", export_today))
 
@@ -126,6 +137,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_resentment_callback, pattern="^resentment:"))
     app.add_handler(CallbackQueryHandler(handle_principles_callback, pattern="^principles:"))
     app.add_handler(CallbackQueryHandler(handle_defects_callback, pattern="^defects:"))
+    app.add_handler(CallbackQueryHandler(handle_steps_callback, pattern="^steps:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -134,4 +146,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
