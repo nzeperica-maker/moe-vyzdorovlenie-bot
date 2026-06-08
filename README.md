@@ -1,1 +1,0 @@
-# moe-vyzdorovlenie-bot
