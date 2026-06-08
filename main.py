@@ -1,4 +1,4 @@
-Внедри все в этот код и дай готовый результат  
+
 from telegram import Update
 from telegram.ext import (
     Application,
