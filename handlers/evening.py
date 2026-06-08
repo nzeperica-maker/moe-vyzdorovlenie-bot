@@ -35,10 +35,10 @@ QUESTIONS = {
     1: "1. Опиши ситуацию, которая сегодня вызвала эмоциональный отклик.",
     2: "2. Какие мысли появились в этой ситуации?",
     3: "3. Что ты чувствовал(а)?",
-    4: "4. В чём проявлялся мой эгоизм?",
-    5: "5. В чём проявлялась моя корысть?",
-    6: "6. В чём проявлялась моя нечестность?",
-    7: "7. Чего я боялся(лась)?",
+    4: "4. В чём проявлялся мой эгоизм?\n\nОпиши подробно, не односложно.",
+    5: "5. В чём проявлялась моя корысть?\n\nЧто я пытался(лась) получить?",
+    6: "6. В чём проявлялась моя нечестность?\n\nГде был самообман или недоговорённость?",
+    7: "7. Чего я боялся(лась)?\n\nЧто я мог(ла) потерять?",
     8: "8. Какой был мой истинный мотив?",
     9: "9. Где моя ответственность в этой ситуации?",
     10: "10. Какие духовные принципы были нарушены?",
@@ -122,6 +122,7 @@ async def handle_evening_message(update: Update, context: ContextTypes.DEFAULT_T
 
     state = evening_states[user_id]
     step = state["step"]
+    text = update.message.text
 
     if step in [10, 11]:
         await update.message.reply_text(
@@ -129,7 +130,7 @@ async def handle_evening_message(update: Update, context: ContextTypes.DEFAULT_T
         )
         return True
 
-    state["answers"][ANSWER_KEYS[step]] = update.message.text
+    state["answers"][ANSWER_KEYS[step]] = text
 
     if step == 9:
         state["step"] = 10
@@ -140,28 +141,29 @@ async def handle_evening_message(update: Update, context: ContextTypes.DEFAULT_T
         return True
 
     if step < 15:
-        state["step"] += 1
+        state["step"] = step + 1
         await update.message.reply_text(
             QUESTIONS[state["step"]],
             reply_markup=nav_keyboard("evening")
         )
-    else:
-        append_record(
-            "data/daily_reviews.json",
-            {
-                "telegram_id": user_id,
-                "created_at": datetime.now().isoformat(),
-                **state["answers"]
-            }
-        )
+        return True
 
-        await update.message.reply_text(
-            "✅ Вечерняя инвентаризация сохранена.",
-            reply_markup=main_menu_keyboard()
-        )
+    append_record(
+        "data/daily_reviews.json",
+        {
+            "telegram_id": user_id,
+            "type": "evening",
+            "created_at": datetime.now().isoformat(),
+            **state["answers"]
+        }
+    )
 
-        del evening_states[user_id]
+    await update.message.reply_text(
+        "✅ Вечерняя инвентаризация сохранена.",
+        reply_markup=main_menu_keyboard()
+    )
 
+    del evening_states[user_id]
     return True
 
 
