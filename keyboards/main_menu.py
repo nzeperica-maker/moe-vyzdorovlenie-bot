@@ -3,7 +3,8 @@ from telegram import ReplyKeyboardMarkup
 
 def main_menu_keyboard():
     keyboard = [
-        ["👤 Профиль", "🌅 Утренний настрой"],
+        ["👤 Профиль"],
+        ["🌅 Утренний настрой"],
         ["🌙 Вечерняя инвентаризация"],
         ["😨 Страхи", "💢 Обиды"],
         ["📚 Принципы", "🧩 Дефекты"],
@@ -14,5 +15,5 @@ def main_menu_keyboard():
         keyboard,
         resize_keyboard=True,
         one_time_keyboard=False,
-        input_field_placeholder="Выбери раздел кнопкой"
+        is_persistent=True
     )
