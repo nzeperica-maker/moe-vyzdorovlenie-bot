@@ -1,55 +1,11 @@
+Замени **`handlers/recovery.py` целиком** на этот код:
+
+```python
 from telegram import Update
 from telegram.ext import ContextTypes
 from collections import Counter
 from services.storage import load_json
 from services.profile_service import get_user_profile, sobriety_days
-
-
-MORNING_FIELDS = [
-    ("score", "Оценка состояния"),
-    ("state_description", "Описание состояния"),
-    ("worry", "Что тревожит"),
-    ("craving", "Тяга"),
-    ("principle", "Принцип дня"),
-    ("principle_practice", "Применение принципа"),
-    ("daily_actions", "Действия"),
-    ("prayer", "Молитва"),
-]
-
-EVENING_FIELDS = [
-    ("situation", "Ситуация"),
-    ("thoughts", "Мысли"),
-    ("feelings", "Чувства"),
-    ("egoism", "Эгоизм"),
-    ("selfishness", "Корысть"),
-    ("dishonesty", "Нечестность"),
-    ("fear", "Страх"),
-    ("real_motive", "Истинный мотив"),
-    ("responsibility", "Ответственность"),
-    ("broken_principles", "Нарушенные принципы"),
-    ("applied_principles", "Принципы для применения"),
-    ("new_decision", "Новое решение"),
-    ("action_plan", "Действие"),
-    ("prayer", "Молитва"),
-    ("gratitude", "Благодарность"),
-]
-
-
-def clean_value(value):
-    if value is None or value == "":
-        return "—"
-
-    if isinstance(value, list):
-        return "\n".join(f"• {item}" for item in value) if value else "—"
-
-    text = str(value)
-
-    if text.startswith("[") and text.endswith("]"):
-        text = text.replace("[", "").replace("]", "").replace("'", "").replace('"', "")
-        items = [item.strip() for item in text.split(",") if item.strip()]
-        return "\n".join(f"• {item}" for item in items)
-
-    return text.strip()
 
 
 def only_user(records, user_id):
@@ -66,22 +22,21 @@ def detect_type(record):
     return record.get("type", "unknown")
 
 
-def split_message(text, limit=3900):
-    parts = []
+def normalize_list(value):
+    if not value:
+        return []
 
-    while len(text) > limit:
-        cut = text.rfind("\n\n", 0, limit)
+    if isinstance(value, list):
+        return value
 
-        if cut == -1:
-            cut = limit
+    if isinstance(value, str):
+        if value.startswith("[") and value.endswith("]"):
+            value = value.replace("[", "").replace("]", "").replace("'", "").replace('"', "")
+            return [item.strip() for item in value.split(",") if item.strip()]
 
-        parts.append(text[:cut])
-        text = text[cut:].strip()
+        return [value.strip()]
 
-    if text:
-        parts.append(text)
-
-    return parts
+    return []
 
 
 def count_values(records, keys):
@@ -89,48 +44,47 @@ def count_values(records, keys):
 
     for record in records:
         for key in keys:
-            value = record.get(key)
-
-            if isinstance(value, list):
-                counter.update(value)
-
-            elif isinstance(value, str) and value:
-                if value.startswith("[") and value.endswith("]"):
-                    value = value.replace("[", "").replace("]", "").replace("'", "").replace('"', "")
-                    items = [item.strip() for item in value.split(",") if item.strip()]
-                    counter.update(items)
-                else:
-                    counter.update([value])
+            counter.update(normalize_list(record.get(key)))
 
     return counter
 
 
-def format_counter(title, counter):
+def format_counter(counter, empty_text="Нет данных", limit=5):
     if not counter:
-        return f"\n\n<b>{title}</b>\nНет данных."
+        return empty_text
 
-    text = f"\n\n<b>{title}</b>"
+    lines = []
 
-    for name, count in counter.most_common(10):
-        text += f"\n• {name} — {count}"
+    for index, (name, count) in enumerate(counter.most_common(limit), start=1):
+        lines.append(f"{index}. {name} — {count}")
 
-    return text
+    return "\n".join(lines)
 
 
-def format_record(title, record, fields):
-    text = f"\n\n<b>{title}</b>"
+def get_scores(records):
+    scores = []
 
-    for key, label in fields:
-        if key in record:
-            text += f"\n\n<b>{label}</b>\n{clean_value(record.get(key))}"
+    for record in records:
+        try:
+            scores.append(int(record.get("score")))
+        except (TypeError, ValueError):
+            pass
 
-    return text
+    return scores
+
+
+def average(values):
+    if not values:
+        return "нет данных"
+
+    return round(sum(values) / len(values), 1)
 
 
 async def recovery_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     profile = get_user_profile(user_id)
+
     daily_records = only_user(load_json("data/daily_reviews.json", []), user_id)
     fear_records = only_user(load_json("data/fears.json", []), user_id)
     resentment_records = only_user(load_json("data/resentments.json", []), user_id)
@@ -145,88 +99,64 @@ async def recovery_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if detect_type(record) == "evening"
     ]
 
-    name = profile.get("nickname") if profile else "Пользователь"
-    days = sobriety_days(profile.get("sobriety_date")) if profile else None
+    scores = get_scores(morning_records)
 
-    scores = []
-    for record in morning_records:
-        try:
-            scores.append(int(record.get("score")))
-        except (TypeError, ValueError):
-            pass
-
-    average_score = round(sum(scores) / len(scores), 1) if scores else "нет данных"
-
-    principles_counter = count_values(
-        daily_records,
-        ["principle", "broken_principles", "applied_principles"]
+    used_principles = count_values(
+        daily_records + fear_records + resentment_records,
+        ["principle", "applied_principles"]
     )
 
-    fears_counter = count_values(
+    broken_principles = count_values(
+        daily_records,
+        ["broken_principles"]
+    )
+
+    fears = count_values(
         daily_records + fear_records,
         ["fear"]
     )
 
-    export_text = (
-        "📈 <b>Моё выздоровление</b>\n\n"
-        f"<b>Профиль</b>\n"
-        f"Имя: {name}\n"
+    defects = count_values(
+        fear_records + resentment_records,
+        ["defect"]
     )
+
+    name = profile.get("nickname") if profile else "Пользователь"
+    days = sobriety_days(profile.get("sobriety_date")) if profile else None
+
+    text = "📈 <b>Моё выздоровление</b>\n\n"
+
+    text += "👤 <b>Профиль</b>\n"
+    text += f"Имя: {name}\n"
 
     if days:
-        export_text += f"Дней трезвости: {days}\n"
+        text += f"Дней трезвости: {days}\n"
 
-    export_text += (
-        "\n<b>Общая статистика за весь период</b>\n"
-        f"Утренних настроев: {len(morning_records)}\n"
-        f"Вечерних инвентаризаций: {len(evening_records)}\n"
-        f"Инвентаризаций страхов: {len(fear_records)}\n"
-        f"Инвентаризаций обид: {len(resentment_records)}\n"
-        f"Средняя оценка утра: {average_score}"
-    )
+    text += "\n📊 <b>Активность за весь период</b>\n"
+    text += f"• Утренних настроев: {len(morning_records)}\n"
+    text += f"• Вечерних инвентаризаций: {len(evening_records)}\n"
+    text += f"• Инвентаризаций страхов: {len(fear_records)}\n"
+    text += f"• Инвентаризаций обид: {len(resentment_records)}\n"
 
-    export_text += format_counter(
-        "Часто встречающиеся духовные принципы",
-        principles_counter
-    )
+    text += "\n🌅 <b>Утреннее состояние</b>\n"
+    text += f"• Средняя оценка утра: {average(scores)}\n"
 
-    export_text += format_counter(
-        "Часто встречающиеся страхи",
-        fears_counter
-    )
+    if scores:
+        text += f"• Лучший день: {max(scores)}\n"
+        text += f"• Самый сложный день: {min(scores)}\n"
 
-    if morning_records:
-        export_text += format_record(
-            "Последний утренний настрой",
-            morning_records[-1],
-            MORNING_FIELDS
-        )
+    text += "\n😨 <b>Частые страхи</b>\n"
+    text += format_counter(fears, "Нет данных")
 
-    if evening_records:
-        export_text += format_record(
-            "Последняя вечерняя инвентаризация",
-            evening_records[-1],
-            EVENING_FIELDS
-        )
+    text += "\n\n📚 <b>Наиболее используемые принципы</b>\n"
+    text += format_counter(used_principles, "Нет данных")
 
-    export_text += (
-        "\n\n<b>Все записи за период</b>\n"
-        "Ниже перечислены все сохранённые утренние и вечерние записи."
-    )
+    text += "\n\n⚠️ <b>Часто нарушаемые принципы</b>\n"
+    text += format_counter(broken_principles, "Нет данных")
 
-    for index, record in enumerate(morning_records, start=1):
-        export_text += format_record(
-            f"🌅 Утренний настрой {index}",
-            record,
-            MORNING_FIELDS
-        )
+    text += "\n\n🧩 <b>Частые дефекты</b>\n"
+    text += format_counter(defects, "Нет данных")
 
-    for index, record in enumerate(evening_records, start=1):
-        export_text += format_record(
-            f"🌙 Вечерняя инвентаризация {index}",
-            record,
-            EVENING_FIELDS
-        )
+    text += "\n\n📄 Подробные записи смотри в разделе «Выгрузка дня»."
 
-    for part in split_message(export_text):
-        await update.message.reply_text(part, parse_mode="HTML")
+    await update.message.reply_text(text, parse_mode="HTML")
