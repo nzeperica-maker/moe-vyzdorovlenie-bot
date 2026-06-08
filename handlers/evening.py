@@ -59,8 +59,6 @@ ANSWER_KEYS = {
     7: "fear",
     8: "real_motive",
     9: "responsibility",
-    10: "broken_principles",
-    11: "applied_principles",
     12: "new_decision",
     13: "action_plan",
     14: "prayer",
@@ -68,18 +66,20 @@ ANSWER_KEYS = {
 }
 
 
-def principles_keyboard(selected, mode):
+def principles_keyboard(selected_ids, mode):
     buttons = []
 
     for i in range(0, len(PRINCIPLES), 2):
         row = []
 
-        for principle in PRINCIPLES[i:i + 2]:
-            mark = "☑️" if principle in selected else "☐"
+        for index in range(i, min(i + 2, len(PRINCIPLES))):
+            principle = PRINCIPLES[index]
+            mark = "☑️" if index in selected_ids else "☐"
+
             row.append(
                 InlineKeyboardButton(
                     f"{mark} {principle}",
-                    callback_data=f"evening:toggle:{mode}:{principle}"
+                    callback_data=f"evening:toggle:{mode}:{index}"
                 )
             )
 
@@ -126,7 +126,11 @@ async def handle_evening_message(update: Update, context: ContextTypes.DEFAULT_T
 
     if step in [10, 11]:
         await update.message.reply_text(
-            "Здесь нужно выбрать принципы кнопками с галочками."
+            "Здесь нужно выбрать принципы кнопками с галочками.",
+            reply_markup=principles_keyboard(
+                state["broken_selected"] if step == 10 else state["applied_selected"],
+                "broken" if step == 10 else "applied"
+            )
         )
         return True
 
@@ -178,7 +182,7 @@ async def handle_evening_callback(update: Update, context: ContextTypes.DEFAULT_
         return
 
     state = evening_states[user_id]
-    parts = query.data.split(":", 3)
+    parts = query.data.split(":")
     action = parts[1]
 
     if action == "cancel":
@@ -198,14 +202,14 @@ async def handle_evening_callback(update: Update, context: ContextTypes.DEFAULT_
 
     if action == "toggle":
         mode = parts[2]
-        principle = parts[3]
+        principle_id = int(parts[3])
 
         key = "broken_selected" if mode == "broken" else "applied_selected"
 
-        if principle in state[key]:
-            state[key].remove(principle)
+        if principle_id in state[key]:
+            state[key].remove(principle_id)
         else:
-            state[key].append(principle)
+            state[key].append(principle_id)
 
         await query.edit_message_text(
             QUESTIONS[state["step"]],
@@ -217,7 +221,9 @@ async def handle_evening_callback(update: Update, context: ContextTypes.DEFAULT_
         mode = parts[2]
 
         if mode == "broken":
-            state["answers"]["broken_principles"] = state["broken_selected"]
+            state["answers"]["broken_principles"] = [
+                PRINCIPLES[i] for i in state["broken_selected"]
+            ]
             state["step"] = 11
 
             await query.edit_message_text(
@@ -227,7 +233,9 @@ async def handle_evening_callback(update: Update, context: ContextTypes.DEFAULT_
             return
 
         if mode == "applied":
-            state["answers"]["applied_principles"] = state["applied_selected"]
+            state["answers"]["applied_principles"] = [
+                PRINCIPLES[i] for i in state["applied_selected"]
+            ]
             state["step"] = 12
 
             await query.edit_message_text(
