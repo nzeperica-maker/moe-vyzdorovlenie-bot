@@ -1,15 +1,12 @@
-from services.storage import load_json
+from services.database import supabase
 
 
 def load_principles():
-    return load_json("data/principles.json", [])
+    result = (
+        supabase.table("principles")
+        .select("*")
+        .order("source_number")
+        .execute()
+    )
 
-
-def get_principle_by_id(principle_id):
-    principles = load_principles()
-
-    for item in principles:
-        if item.get("id") == principle_id:
-            return item
-
-    return None
+    return result.data or []
