@@ -10,12 +10,12 @@ from telegram.ext import (
 import os
 
 from handlers.start import start
-from handlers.profile import profile, handle_profile_message, reset_profile
-from handlers.morning import morning_checkin, handle_morning_message, handle_morning_callback
-from handlers.evening import evening_review, handle_evening_message, handle_evening_callback
-from handlers.fears import fear_inventory, handle_fear_message, handle_fear_callback
-from handlers.resentments import resentment_inventory, handle_resentment_message, handle_resentment_callback
-from handlers.principles import show_principles, handle_principles_callback
+from handlers.profile import profile, handle_profile_message, reset_profile, profile_states
+from handlers.morning import morning_checkin, handle_morning_message, handle_morning_callback, morning_states
+from handlers.evening import evening_review, handle_evening_message, handle_evening_callback, evening_states
+from handlers.fears import fear_inventory, handle_fear_message, handle_fear_callback, fear_states
+from handlers.resentments import resentment_inventory, handle_resentment_message, handle_resentment_callback, resentment_states
+from handlers.principles import show_principles, handle_principles_callback, seed_principles_command
 from handlers.defects import show_defects, handle_defects_callback
 from handlers.recovery import recovery_stats
 from handlers.export import export_today
@@ -25,26 +25,40 @@ from keyboards.main_menu import main_menu_keyboard
 TOKEN = os.getenv("Bot_token")
 
 
+def clear_user_states(user_id):
+    profile_states.pop(user_id, None)
+    morning_states.pop(user_id, None)
+    evening_states.pop(user_id, None)
+    fear_states.pop(user_id, None)
+    resentment_states.pop(user_id, None)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    user_id = update.effective_user.id
 
     if text == "👤 Профиль":
+        clear_user_states(user_id)
         await profile(update, context)
         return
 
     if text == "🌅 Утренний настрой":
+        clear_user_states(user_id)
         await morning_checkin(update, context)
         return
 
     if text == "🌙 Вечерняя инвентаризация":
+        clear_user_states(user_id)
         await evening_review(update, context)
         return
 
     if text == "😨 Страхи":
+        clear_user_states(user_id)
         await fear_inventory(update, context)
         return
 
     if text == "💢 Обиды":
+        clear_user_states(user_id)
         await resentment_inventory(update, context)
         return
 
@@ -92,7 +106,6 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Команды оставлены как запасной вариант, но основной интерфейс — кнопки.
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("reset_profile", reset_profile))
@@ -101,6 +114,7 @@ def main():
     app.add_handler(CommandHandler("fear", fear_inventory))
     app.add_handler(CommandHandler("resentment", resentment_inventory))
     app.add_handler(CommandHandler("principles", show_principles))
+    app.add_handler(CommandHandler("seed_principles", seed_principles_command))
     app.add_handler(CommandHandler("defects", show_defects))
     app.add_handler(CommandHandler("recovery", recovery_stats))
     app.add_handler(CommandHandler("export_today", export_today))
@@ -112,9 +126,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_principles_callback, pattern="^principles:"))
     app.add_handler(CallbackQueryHandler(handle_defects_callback, pattern="^defects:"))
 
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling()
 
