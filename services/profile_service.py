@@ -1,42 +1,53 @@
-from datetime import datetime, date
-from services.storage import find_by_telegram_id, upsert_by_telegram_id, load_json, save_json
-
-USERS_FILE = "data/users.json"
-
-
-def get_user_profile(telegram_id):
-    return find_by_telegram_id(USERS_FILE, telegram_id)
-
-
-def save_user_profile(profile):
-    upsert_by_telegram_id(USERS_FILE, profile)
-
-
-def delete_user_profile(telegram_id):
-    users = load_json(USERS_FILE, [])
-    users = [
-        item for item in users
-        if item.get("telegram_id") != telegram_id
-    ]
-    save_json(USERS_FILE, users)
+from datetime import datetime
+from services.database import supabase
 
 
 def parse_sobriety_date(text):
-    cleaned = text.strip().replace("/", ".").replace("-", ".")
-
-    for fmt in ("%d.%m.%Y", "%Y.%m.%d"):
-        try:
-            return datetime.strptime(cleaned, fmt).date()
-        except ValueError:
-            pass
-
-    return None
-
-
-def sobriety_days(sobriety_date_text):
-    parsed = parse_sobriety_date(sobriety_date_text)
-
-    if not parsed:
+    try:
+        return datetime.strptime(text.strip(), "%d.%m.%Y").date()
+    except ValueError:
         return None
 
-    return (date.today() - parsed).days + 1
+
+def sobriety_days(date_text):
+    if not date_text:
+        return None
+
+    try:
+        if "-" in date_text:
+            sobriety_date = datetime.strptime(date_text, "%Y-%m-%d").date()
+        else:
+            sobriety_date = datetime.strptime(date_text, "%d.%m.%Y").date()
+
+        return (datetime.now().date() - sobriety_date).days + 1
+    except ValueError:
+        return None
+
+
+def get_user_profile(telegram_id):
+    result = (
+        supabase.table("users")
+        .select("*")
+        .eq("telegram_id", telegram_id)
+        .execute()
+    )
+
+    if not result.data:
+        return None
+
+    return result.data[0]
+
+
+def save_user_profile(profile_data):
+    sobriety_date = parse_sobriety_date(profile_data["sobriety_date"])
+
+    supabase.table("users").upsert({
+        "telegram_id": profile_data["telegram_id"],
+        "nickname": profile_data["nickname"],
+        "sobriety_date": sobriety_date.isoformat(),
+        "timezone": profile_data.get("timezone", "Europe/Stockholm"),
+    }, on_conflict="telegram_id").execute()
+
+
+def delete_user_profile(telegram_id):
+    supabase.table("users").delete().eq("telegram_id", telegram_id).execute()
