@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from datetime import datetime
 from services.storage import load_json
+from services.database import supabase
 
 
 MORNING_FIELDS = [
@@ -161,6 +162,103 @@ def format_extra_section(title, records, fields):
     return text
 
 
+def load_user_steps_for_export(user_id):
+    progress_result = (
+        supabase.table("user_step_progress")
+        .select("*")
+        .eq("telegram_id", user_id)
+        .execute()
+    )
+
+    progress_rows = progress_result.data or []
+
+    if not progress_rows:
+        return []
+
+    step_numbers = [row["step_number"] for row in progress_rows]
+
+    steps_result = (
+        supabase.table("steps")
+        .select("*")
+        .in_("step_number", step_numbers)
+        .order("step_number")
+        .execute()
+    )
+
+    steps = steps_result.data or []
+
+    progress_map = {
+        row["step_number"]: row.get("status", "not_started")
+        for row in progress_rows
+    }
+
+    for step in steps:
+        step["user_status"] = progress_map.get(
+            step["step_number"],
+            "not_started"
+        )
+
+    return steps
+
+
+def format_steps_section(user_id):
+    steps = load_user_steps_for_export(user_id)
+
+    if not steps:
+        return (
+            "\n📖 <b>Работа по 12 Шагам</b>\n"
+            "Пока нет отмеченных шагов.\n"
+        )
+
+    text = "\n📖 <b>Работа по 12 Шагам</b>\n"
+
+    active_steps = [
+        step for step in steps
+        if step.get("user_status") == "in_progress"
+    ]
+
+    completed_steps = [
+        step for step in steps
+        if step.get("user_status") == "completed"
+    ]
+
+    if active_steps:
+        text += "\n▶️ <b>Сейчас в работе</b>\n"
+
+        for step in active_steps:
+            text += (
+                f"\n<b>Шаг {step.get('step_number')}: "
+                f"{step.get('title')}</b>\n"
+                f"{step.get('short_description') or '—'}\n"
+            )
+
+            practice = step.get("practice") or []
+            if practice:
+                text += "\n<b>Практика:</b>\n"
+                for item in practice[:3]:
+                    text += f"• {item}\n"
+
+            questions = step.get("questions") or []
+            if questions:
+                text += "\n<b>Вопросы для размышления:</b>\n"
+                for item in questions[:3]:
+                    text += f"• {item}\n"
+
+    if completed_steps:
+        text += "\n✅ <b>Завершённые шаги</b>\n"
+
+        for step in completed_steps:
+            text += (
+                f"• Шаг {step.get('step_number')}: "
+                f"{step.get('title')}\n"
+            )
+
+    if not active_steps and not completed_steps:
+        text += "Шаги отмечены, но пока не выбраны как «в работе» или «завершён».\n"
+
+    return text
+
+
 def split_message(text, limit=3900):
     parts = []
 
@@ -208,9 +306,19 @@ async def export_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     export_text += "\n────────────────────\n"
     export_text += format_evening(daily_records)
     export_text += "\n────────────────────\n"
-    export_text += format_extra_section("😨 <b>Инвентаризация страхов</b>", fear_records, FEAR_FIELDS)
+    export_text += format_steps_section(user_id)
     export_text += "\n────────────────────\n"
-    export_text += format_extra_section("💢 <b>Инвентаризация обид</b>", resentment_records, RESENTMENT_FIELDS)
+    export_text += format_extra_section(
+        "😨 <b>Инвентаризация страхов</b>",
+        fear_records,
+        FEAR_FIELDS
+    )
+    export_text += "\n────────────────────\n"
+    export_text += format_extra_section(
+        "💢 <b>Инвентаризация обид</b>",
+        resentment_records,
+        RESENTMENT_FIELDS
+    )
 
     for part in split_message(export_text):
         await update.message.reply_text(part, parse_mode="HTML")
