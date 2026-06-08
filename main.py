@@ -1,3 +1,4 @@
+Внедри все в этот код и дай готовый результат  
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -133,3 +134,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
