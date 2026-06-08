@@ -1,58 +1,46 @@
-import json
-import os
+from services.database import supabase
+
+
+def append_record(path, record):
+    if path == "data/daily_reviews.json":
+        supabase.table("daily_reviews").insert({
+            "telegram_id": record.get("telegram_id"),
+            "review_type": record.get("type", "review"),
+            "data": record
+        }).execute()
+
+    elif path == "data/fears.json":
+        supabase.table("fears").insert({
+            "telegram_id": record.get("telegram_id"),
+            "data": record
+        }).execute()
+
+    elif path == "data/resentments.json":
+        supabase.table("resentments").insert({
+            "telegram_id": record.get("telegram_id"),
+            "data": record
+        }).execute()
 
 
 def load_json(path, default=None):
     if default is None:
         default = []
 
-    if not os.path.exists(path):
-        return default
+    if path == "data/daily_reviews.json":
+        rows = supabase.table("daily_reviews").select("*").execute().data
+        return [row["data"] for row in rows]
 
-    with open(path, "r", encoding="utf-8") as file:
-        try:
-            return json.load(file)
-        except json.JSONDecodeError:
-            return default
+    if path == "data/fears.json":
+        rows = supabase.table("fears").select("*").execute().data
+        return [row["data"] for row in rows]
+
+    if path == "data/resentments.json":
+        rows = supabase.table("resentments").select("*").execute().data
+        return [row["data"] for row in rows]
+
+    return default
 
 
 def save_json(path, data):
-    folder = os.path.dirname(path)
-
-    if folder:
-        os.makedirs(folder, exist_ok=True)
-
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
-
-
-def append_record(path, record):
-    data = load_json(path, [])
-    data.append(record)
-    save_json(path, data)
-
-
-def find_by_telegram_id(path, telegram_id):
-    data = load_json(path, [])
-
-    for item in data:
-        if item.get("telegram_id") == telegram_id:
-            return item
-
-    return None
-
-
-def upsert_by_telegram_id(path, record):
-    data = load_json(path, [])
-    updated = False
-
-    for index, item in enumerate(data):
-        if item.get("telegram_id") == record.get("telegram_id"):
-            data[index] = record
-            updated = True
-            break
-
-    if not updated:
-        data.append(record)
-
-    save_json(path, data)
+    # Больше не используем JSON как основное хранилище.
+    return
